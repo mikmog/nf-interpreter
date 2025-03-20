@@ -288,7 +288,7 @@ void DisplayDriver::BitBlt(
     SetWindow(screenX, screenY, (screenX + width - 1), (screenY + height - 1));
 
     g_DisplayInterface.SendCommand(1, Memory_Write);
-    
+
     uint32_t count = 0;
 
     CLR_UINT8 *TransferBuffer = Attributes.TransferBuffer;
