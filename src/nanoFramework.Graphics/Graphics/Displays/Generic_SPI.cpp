@@ -260,7 +260,16 @@ void DisplayDriver::Clear()
 
         g_DisplayInterface.SendCommand(1, g_DisplayInterfaceConfig.GenericDriverCommands.MemoryWrite);
 
-        g_DisplayInterface.FillData16(0, Attributes.Width * Attributes.Height);
+        if (Attributes.BitsPerPixel <= 16)
+        {
+            // 2 bytes per pixel
+            g_DisplayInterface.FillData16(0, Attributes.Width * Attributes.Height);
+        }
+        else
+        {
+            // 3 bytes per pixel
+            g_DisplayInterface.FillData16(0, Attributes.Width * Attributes.Height * 3 / 2);
+        }
     }
     else
     {
@@ -298,7 +307,53 @@ void DisplayDriver::BitBlt(
 
     g_DisplayInterface.SendCommand(1, g_DisplayInterfaceConfig.GenericDriverCommands.MemoryWrite);
 
-    g_DisplayInterface.SendData16Windowed((CLR_UINT16 *)&data[0], srcX, srcY, width, height, stride, true);
+    if (Attributes.BitsPerPixel <= 16)
+    {
+        g_DisplayInterface.SendData16Windowed((CLR_UINT16 *)&data[0], srcX, srcY, width, height, stride, true);
+    }
+    else
+    {
+        uint32_t count = 0;
+        CLR_UINT8 *TransferBuffer = Attributes.TransferBuffer;
+        CLR_UINT32 TransferBufferSize = Attributes.TransferBufferSize - 3;
+
+        uint32_t endY = srcY + height;
+        uint32_t endX = srcX + width;
+
+        // RGB scaling shifts
+        const uint8_t blueShift = 3;
+        const uint8_t greenShift = 2;
+        const uint8_t redShift = 3;
+
+        // Loop through the source data and convert it to RGB 8bit components
+        for (uint32_t y = srcY; y < endY; y++)
+        {
+            uint32_t rowOffset = y * Attributes.Width;
+            for (uint32_t x = srcX; x < endX; x++)
+            {
+                uint32_t i = (rowOffset + x) / 2;
+                uint16_t color = (x % 2 == 0) ? (data[i] & 0xFFFF) : (data[i] >> 16);
+
+                // Scale RGB to 8bit components
+                TransferBuffer[count++] = (color & 0x1F) << blueShift;         // Blue
+                TransferBuffer[count++] = ((color >> 5) & 0x3F) << greenShift; // Green
+                TransferBuffer[count++] = ((color >> 11) & 0x1F) << redShift;  // Red
+
+                // Send buffer when full
+                if (count >= TransferBufferSize)
+                {
+                    g_DisplayInterface.SendBytes(TransferBuffer, count);
+                    count = 0;
+                }
+            }
+        }
+
+        // Send remaining data
+        if (count > 0)
+        {
+            g_DisplayInterface.SendBytes(TransferBuffer, count);
+        }
+    }
 
     return;
 }
